@@ -12,7 +12,7 @@ You use this software entirely at your own risk, and the issue tracker is intent
 # Prerequisites
 
 1. A Linux system (with desktop environment or not).
-1. `bash` already installed and working.
+1. `bash` already installed, working, and set as your default/preferred shell.
 1. `ssh-agent` already installed and working.
 1. A burning desire to have `ssh-agent` automatically start a single instance per-user the first time each user logs into the system.
 
@@ -29,7 +29,7 @@ You use this software entirely at your own risk, and the issue tracker is intent
 1. `cp ./etc/profile.d/ssh-agent.sh /etc/profile.d/ssh-agent.sh`
 1. `chown root:root /usr/local/sbin/ssh-agent-ctl`
 1. `chmod ugo+rx /usr/local/sbin/ssh-agent-ctl`
-1. (only if your preferred shell is `bash`): Manually add the following lines to the bottom of your global `/etc/bash.bashrc`:
+1. Manually add the following lines to the bottom of `/etc/bash.bashrc`:
 
     ```
     ssh-agent-ctl start-bg /etc/bash.bashrc
