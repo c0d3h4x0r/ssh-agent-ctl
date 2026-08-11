@@ -7,7 +7,7 @@ You can easily add this script as a `systemd` user service, to a login/profile s
 
 ZERO SUPPORT, WARRANTIES, OR GUARANTEES OF ANY KIND (other than the applicable GPL license) ARE PROVIDED BY THE DEVELOPER.
 
-You use this software entirely at your own risk, and if you want anything about if changed or fixed, create your own fork and fix it yourself.
+You use this software entirely at your own risk, and the issue tracker is intentionally closed. If you want anything about this software changed or fixed, create your own fork and fix it yourself. You are welcome to send a pull request if you want to be a particularly good Samaritan, but I make no guarantees that I'll ever merge it or even comment on it.
 
 # Prerequisites
 

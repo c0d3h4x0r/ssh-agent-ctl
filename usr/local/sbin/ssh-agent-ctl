@@ -1,0 +1,177 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+
+COMMAND_NAME="${0##*/}"
+COMMAND="$0 $@"
+VERBOSITY=0
+
+if [ -z "${HOME}" ]; then
+    HOME="$(cd ~; pwd)"
+fi
+
+if [ -z "${USER}" ]; then
+    log >&2 0 "error: USER variable not set"
+    exit 1
+fi
+
+RUNTIME_DIR="${HOME}/.ssh/agent/run"
+AGENT_ENVSRC="${RUNTIME_DIR}/env.sh"
+AGENT_SOCKET="${RUNTIME_DIR}/socket"
+USER_PRIVATE_KEYS_DIR="${HOME}/.ssh/private_keys"
+LOG_FILE="${HOME}/.cache/ssh-agent-ctl/ssh-agent-ctl.log"
+
+if ! [ -f "${LOG_FILE}" ]; then
+    mkdir -p "${LOG_FILE%/*}"
+    touch "${LOG_FILE}"
+fi
+
+function log {
+    local THRESHOLD=$1
+    shift
+    if [ ${VERBOSITY} -ge $THRESHOLD ]; then
+        echo "$@"
+    fi
+    echo "[$(date --rfc-3339=sec)] ${COMMAND_NAME}: $@" >> "${LOG_FILE}"
+}
+
+function show_usage_and_exit {
+    log >&2 0 "usage:"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] start-fg [CALLED_BY]     - start for current user as a blocking/foreground process"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] start-bg [CALLED_BY]    - start for current user as a non-blocking/background process"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] envsrc                       - print bash commands for exporting the environment variables"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] addkeys [CALLED_BY]          - add private keys from \${HOME}/.ssh/private_keys"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] stop [CALLED_BY]             - stop the (background or foreground) process for this user"
+    log >&2 0 ""
+    log >&2 0 "       Arguments must be ordered exactly as shown."
+    log >&2 0 "       CALLED_BY (optional): path to the script invoking this command (for logging purposes)"
+    exit 1
+}
+
+function stdin_is_terminal {
+    [ -t 0 ]
+}
+
+function cleanup {
+    [ -f "${AGENT_ENVSRC}" ] && rm "${AGENT_ENVSRC}"
+    [ -S "${AGENT_SOCKET}" ] && rm "${AGENT_SOCKET}"
+    return 0
+}
+
+function is_agent_running {
+    ps -eo user,comm  | grep -qE "^${USER}\s+ssh-agent$" && [ -S "${AGENT_SOCKET}" ]
+}
+
+function wait_for_agent_stop {
+    . "${AGENT_ENVSRC}" > /dev/null
+    while kill -0 "${SSH_AGENT_PID}" >/dev/null 2>&1; do
+        sleep 1
+    done
+    cleanup
+}
+
+function update_dbus_env {
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS}" ]; then
+        return
+    fi
+
+    if [ ${VERBOSITY} -gt 0 ]; then
+        local VERBOSE_ARG=--verbose
+    else
+        local VERBOSE_ARG=
+    fi
+
+    dbus-update-activation-environment --systemd "${VERBOSE_ARG}" "$@"
+}
+
+
+function start_agent_async {
+    trap 'stop_agent; exit $?' INT TERM
+    if is_agent_running; then
+        . "${AGENT_ENVSRC}" > /dev/null
+        log 1 "ssh-agent pid ${SSH_AGENT_PID} already running"
+    else
+        cleanup
+        mkdir -p "${RUNTIME_DIR}"
+        (umask 0077 ; ssh-agent -a "${AGENT_SOCKET}" -s | sed -E 's/^echo .*$//g' | sed -z -E 's/\n\n/\n/g' > "${AGENT_ENVSRC}")
+        . "${AGENT_ENVSRC}" > /dev/null
+        log 1 "ssh-agent pid ${SSH_AGENT_PID} started"
+        update_dbus_env 'SSH_AUTH_SOCK="${SSH_AUTH_SOCK}"'
+    fi
+}
+
+function add_private_keys {
+    if ! stdin_is_terminal; then
+        log 1 "skipping adding private keys because a terminal is not connected to stdin"
+        return 0
+    elif ! is_agent_running; then
+        log 1 "skipping adding private keys because ssh-agent is not running for this user"
+        return 0
+    fi
+
+    . "${AGENT_ENVSRC}" > /dev/null
+    if ! ssh-add -l >/dev/null 2>&1; then
+        while IFS= read -d $'\0' -r PRIVATE_KEY_FILE; do
+            log 1 "adding private key: ${PRIVATE_KEY_FILE}"
+            SSH_ASKPASS_REQUIRE=never ssh-add "${PRIVATE_KEY_FILE}"
+        done < <( find "${USER_PRIVATE_KEYS_DIR}" -maxdepth 1 -type f -print0 2>/dev/null || true)
+    fi
+}
+
+function stop_agent {
+    if ! is_agent_running; then
+        log 1 "ssh-agent is not running, nothing to stop"
+    else
+        . "${AGENT_ENVSRC}" > /dev/null
+        update_dbus_env 'SSH_AUTH_SOCK='
+        ssh-agent -k > /dev/null
+        log 1 "ssh-agent (pid=${SSH_AGENT_PID}) stopped"
+    fi
+    cleanup
+}
+
+while true; do
+    case "$1" in
+        --verbose)
+            VERBOSITY=1
+            ;;
+
+        start-fg)
+            log 1 "command: ${COMMAND}"
+            shift 2
+            start_agent_async
+            wait_for_agent_stop
+            ;;
+
+        start-bg)
+            log 1 "command: ${COMMAND}"
+            shift 1
+            start_agent_async
+            ;;
+
+        envsrc)
+            if [ -S "${AGENT_SOCKET}" ]; then
+                cat "${AGENT_ENVSRC}"
+            fi
+            ;;
+
+        addkeys)
+            log 1 "command: ${COMMAND}"
+            shift 1
+            add_private_keys
+            ;;
+
+        stop)
+            log 1 "command: ${COMMAND}"
+            shift 1
+            stop_agent
+            ;;
+
+        *)
+            show_usage_and_exit
+            ;;
+    esac
+    shift 1
+    [ -z "$1" ] && break
+done
