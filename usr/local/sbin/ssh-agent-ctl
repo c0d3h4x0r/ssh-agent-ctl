@@ -38,8 +38,8 @@ function log {
 
 function show_usage_and_exit {
     log >&2 0 "usage:"
-    log >&2 0 "    ${COMMAND_NAME} [--verbose] start-fg [CALLED_BY]     - start for current user as a blocking/foreground process"
-    log >&2 0 "    ${COMMAND_NAME} [--verbose] start-bg [CALLED_BY]    - start for current user as a non-blocking/background process"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] start-fg [CALLED_BY]         - start for current user as a blocking/foreground process"
+    log >&2 0 "    ${COMMAND_NAME} [--verbose] start-bg [CALLED_BY]         - start for current user as a non-blocking/background process"
     log >&2 0 "    ${COMMAND_NAME} [--verbose] envsrc                       - print bash commands for exporting the environment variables"
     log >&2 0 "    ${COMMAND_NAME} [--verbose] addkeys [CALLED_BY]          - add private keys from \${HOME}/.ssh/private_keys"
     log >&2 0 "    ${COMMAND_NAME} [--verbose] stop [CALLED_BY]             - stop the (background or foreground) process for this user"
